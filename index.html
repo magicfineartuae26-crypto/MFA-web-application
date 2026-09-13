@@ -1731,17 +1731,35 @@
 
       const activeEmployees = (appState.employees || []).filter(e => e.status === "active");
 
-      const busyWorkerIds = (appState.attendance || [])
-        .filter(a => a.workingDate === workingDate && a.shiftType === shiftType && a.status === "present")
+      if (activeEmployees.length === 0) {
+        select.innerHTML = '<option value="">-- No active employees in Settings --</option>';
+        return;
+      }
+
+      // Workers already present on THIS site
+      const currentSiteWorkerIds = (appState.attendance || [])
+        .filter(a => a.workingDate === workingDate && a.shiftType === shiftType && a.siteId === siteId && a.status === "present")
         .map(a => a.employeeId);
 
-      const available = activeEmployees.filter(emp => !busyWorkerIds.includes(emp.id));
+      // Workers already committed to OTHER sites
+      const otherSiteWorkerIds = (appState.attendance || [])
+        .filter(a => a.workingDate === workingDate && a.shiftType === shiftType && a.siteId !== siteId && a.status === "present")
+        .map(a => a.employeeId);
+
+      // Available = active employees who are NOT already on this site AND NOT on another site
+      const available = activeEmployees.filter(emp =>
+        !currentSiteWorkerIds.includes(emp.id) && !otherSiteWorkerIds.includes(emp.id)
+      );
+
+      if (available.length === 0) {
+        select.innerHTML = '<option value="">-- All workers assigned to sites --</option>';
+        return;
+      }
 
       available.forEach(emp => {
         select.add(new Option(`${emp.name} (${emp.designation || 'Staff'})`, emp.id));
       });
     }
-
     function addWorkerToCurrentSite() {
       const select = document.getElementById("attAddWorkerSelect");
       const empId = select ? select.value : "";
@@ -1764,7 +1782,10 @@
         defaultTimes = { normalStart: "20:00", normalEnd: "06:00" };
       }
 
-      appState.attendance = (appState.attendance || []).filter(a => !(a.employeeId === empId && a.workingDate === workingDate && a.shiftType === shiftType));
+      appState.attendance = (appState.attendance || []).filter(a =>
+        !(a.employeeId === empId && a.workingDate === workingDate && a.shiftType === shiftType)
+      );
+
       appState.attendance.push({
         id: "att_" + Date.now() + "_" + empId,
         employeeId: empId,
@@ -1780,6 +1801,9 @@
         createdBy: appState.userEmail
       });
 
+      // Save locally and push to Google Sheet immediately
+      saveState();
+
       renderAttendanceForm();
       showToast(`${empObj ? empObj.name : 'Worker'} added to ${siteName}`, "success");
     }
@@ -1789,16 +1813,16 @@
       const shiftType = document.getElementById("attShiftSelect").value;
       const workingDate = document.getElementById("attWorkingDate").value;
 
-      // Remove the worker record for this site & shift
+      // Remove from this site's roster
       appState.attendance = (appState.attendance || []).filter(a =>
         !(a.employeeId === empId && a.workingDate === workingDate && a.shiftType === shiftType && a.siteId === siteId)
       );
 
-      // Immediately persist locally and push to Google Sheet so the background poller does not restore it
+      // Save locally and sync immediately to prevent cloud overwrite
       saveState();
 
       renderAttendanceForm();
-      showToast("Worker removed from site", "info");
+      showToast("Worker removed from site roster", "info");
     }
 
     function renderAttendanceForm() {
