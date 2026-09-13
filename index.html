@@ -1541,6 +1541,13 @@
       document.getElementById("histEndDate").value = todayStr;
       document.getElementById("salaryMonthPicker").value = monthStr;
       document.getElementById("paySettlementDate").value = todayStr;
+      // Auto-upgrade any old 15:30 sites to 17:00 (10 hrs)
+      (appState.sites || []).forEach(site => {
+        if (site.shifts && site.shifts.Day && site.shifts.Day.normalEnd === "15:30") {
+          site.shifts.Day.normalEnd = "17:00";
+        }
+      });
+      saveState();
 
       refreshAllViews();
 
@@ -1899,12 +1906,19 @@
       }
       calcMaterialRatio();
 
+      // OLD CODE:
+      // NEW CODE (Enforces standard 10-hour shifts):
       const siteObj = (appState.sites || []).find(s => s.id === siteId);
-      let defaultTimes = { normalStart: "07:00", normalEnd: "17:00" };
+      let defaultTimes = shiftType === "Night"
+        ? { normalStart: "20:00", normalEnd: "06:00" }   // 10 hours
+        : { normalStart: "07:00", normalEnd: "17:00" };  // 10 hours
+
       if (siteObj && siteObj.shifts && siteObj.shifts[shiftType]) {
-        defaultTimes = siteObj.shifts[shiftType];
-      } else if (shiftType === "Night") {
-        defaultTimes = { normalStart: "20:00", normalEnd: "06:00" };
+        const customShift = siteObj.shifts[shiftType];
+        // Ignore outdated 15:30 end time from older versions
+        if (customShift.normalEnd !== "15:30") {
+          defaultTimes = customShift;
+        }
       }
 
       container.innerHTML = "";
