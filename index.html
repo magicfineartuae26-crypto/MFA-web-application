@@ -1373,8 +1373,10 @@
       }
     }
 
+    let isCloudPushing = false;
+
     async function pullFromGoogleSheet() {
-      if (!cloudWebhookUrl) return;
+      if (!cloudWebhookUrl || isCloudPushing) return;
       try {
         const res = await fetch(cloudWebhookUrl);
         if (res.ok) {
@@ -1401,6 +1403,7 @@
     async function pushToGoogleSheet() {
       if (!cloudWebhookUrl) return;
       try {
+        isCloudPushing = true;
         await fetch(cloudWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1408,6 +1411,8 @@
         });
       } catch (err) {
         console.error("Sheet push error:", err);
+      } finally {
+        setTimeout(() => { isCloudPushing = false; }, 2000);
       }
     }
 
@@ -1784,9 +1789,16 @@
       const shiftType = document.getElementById("attShiftSelect").value;
       const workingDate = document.getElementById("attWorkingDate").value;
 
-      appState.attendance = (appState.attendance || []).filter(a => !(a.employeeId === empId && a.workingDate === workingDate && a.shiftType === shiftType && a.siteId === siteId));
+      // Remove the worker record for this site & shift
+      appState.attendance = (appState.attendance || []).filter(a =>
+        !(a.employeeId === empId && a.workingDate === workingDate && a.shiftType === shiftType && a.siteId === siteId)
+      );
+
+      // Immediately persist locally and push to Google Sheet so the background poller does not restore it
+      saveState();
+
       renderAttendanceForm();
-      showToast("Worker removed from this site roster", "info");
+      showToast("Worker removed from site", "info");
     }
 
     function renderAttendanceForm() {
